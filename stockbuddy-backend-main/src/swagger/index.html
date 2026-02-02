@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StockBuddy API Documentation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 3rem;
+        }
+        
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            font-weight: 700;
+        }
+        
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .card h2 {
+            color: #4f46e5;
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+        }
+        
+        .card p {
+            margin-bottom: 1rem;
+            color: #666;
+        }
+        
+        .btn {
+            display: inline-block;
+            background: #4f46e5;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 500;
+            transition: background 0.3s ease;
+            margin-right: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .btn:hover {
+            background: #3730a3;
+        }
+        
+        .btn-secondary {
+            background: #6b7280;
+        }
+        
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+        
+        .feature {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .feature-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .feature h3 {
+            color: #4f46e5;
+            margin-bottom: 0.5rem;
+        }
+        
+        .endpoints {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .endpoint {
+            background: #f8fafc;
+            padding: 1rem;
+            border-radius: 6px;
+            border-left: 4px solid #4f46e5;
+        }
+        
+        .endpoint h4 {
+            color: #4f46e5;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .endpoint p {
+            font-size: 0.8rem;
+            color: #666;
+            margin: 0;
+        }
+        
+        .auth-info {
+            background: #fef3c7;
+            border: 1px solid #f59e0b;
+            border-radius: 6px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+        
+        .auth-info strong {
+            color: #92400e;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 StockBuddy API</h1>
+            <p>Comprehensive Inventory, Transaction & Event Management System</p>
+        </div>
+        
+        <div class="card">
+            <h2>📚 API Documentation</h2>
+            <p>Explore our comprehensive API documentation with interactive examples and detailed schemas.</p>
+            <a href="/api/docs/swagger" class="btn">View Swagger UI</a>
+            <a href="/api/docs/swagger.json" class="btn btn-secondary">Download OpenAPI Spec</a>
+        </div>
+        
+        <div class="card">
+            <h2>🔐 Authentication</h2>
+            <div class="auth-info">
+                <strong>JWT Bearer Token Required:</strong> Most endpoints require authentication via Bearer token in the Authorization header.
+            </div>
+            <p>Get started by registering a new account or logging in with existing credentials.</p>
+            <div class="endpoints">
+                <div class="endpoint">
+                    <h4>POST /auth/signup</h4>
+                    <p>Create new user account</p>
+                </div>
+                <div class="endpoint">
+                    <h4>POST /auth/login</h4>
+                    <p>Authenticate and get JWT token</p>
+                </div>
+                <div class="endpoint">
+                    <h4>POST /auth/logout</h4>
+                    <p>Invalidate current token</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="grid">
+            <div class="feature">
+                <div class="feature-icon">👥</div>
+                <h3>User Management</h3>
+                <p>Complete user and organization management with role-based access control</p>
+            </div>
+            
+            <div class="feature">
+                <div class="feature-icon">💰</div>
+                <h3>Transactions</h3>
+                <p>Track purchases, orders, sales, and payments with partial payment support</p>
+            </div>
+            
+            <div class="feature">
+                <div class="feature-icon">📦</div>
+                <h3>Inventory</h3>
+                <p>Manage inventory records with seat assignments and splitting capabilities</p>
+            </div>
+            
+            <div class="feature">
+                <div class="feature-icon">🏪</div>
+                <h3>Vendors & Banks</h3>
+                <p>Manage counterparties and bank accounts with balance tracking</p>
+            </div>
+            
+            <div class="feature">
+                <div class="feature-icon">🎯</div>
+                <h3>Events</h3>
+                <p>Sports fixture integration and personal event management</p>
+            </div>
+            
+            <div class="feature">
+                <div class="feature-icon">📊</div>
+                <h3>Bulk Operations</h3>
+                <p>CSV import/export for members, vendors, banks, and inventory</p>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>🌟 Key Features</h2>
+            <div class="endpoints">
+                <div class="endpoint">
+                    <h4>Multi-Tenant</h4>
+                    <p>Subdomain-based tenant isolation</p>
+                </div>
+                <div class="endpoint">
+                    <h4>File Uploads</h4>
+                    <p>Secure S3 presigned URL uploads</p>
+                </div>
+                <div class="endpoint">
+                    <h4>Email Integration</h4>
+                    <p>AWS SES for notifications and invites</p>
+                </div>
+                <div class="endpoint">
+                    <h4>Advanced Filtering</h4>
+                    <p>Query parameters for precise data retrieval</p>
+                </div>
+                <div class="endpoint">
+                    <h4>Financial Precision</h4>
+                    <p>Multi-currency support with proper rounding</p>
+                </div>
+                <div class="endpoint">
+                    <h4>Audit Trail</h4>
+                    <p>User tracking for all operations</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>🚀 Quick Start</h2>
+            <p>Ready to get started? Here's what you need to know:</p>
+            <ol style="margin-left: 2rem; margin-top: 1rem;">
+                <li style="margin-bottom: 0.5rem;"><strong>Base URL:</strong> All endpoints are prefixed with <code>/api</code></li>
+                <li style="margin-bottom: 0.5rem;"><strong>Authentication:</strong> Include <code>Authorization: Bearer &lt;token&gt;</code> header</li>
+                <li style="margin-bottom: 0.5rem;"><strong>Content-Type:</strong> Use <code>application/json</code> for request bodies</li>
+                <li style="margin-bottom: 0.5rem;"><strong>Response Format:</strong> All responses include <code>success</code> boolean and optional <code>data</code>/<code>message</code></li>
+            </ol>
+            <a href="/api/docs/swagger" class="btn" style="margin-top: 1rem;">Explore API Documentation</a>
+        </div>
+    </div>
+</body>
+</html>

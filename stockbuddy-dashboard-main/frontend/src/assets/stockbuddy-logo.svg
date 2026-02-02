@@ -1,0 +1,16 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="sb-gradient" x1="18" y1="18" x2="110" y2="110" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1F8BFF"/>
+      <stop offset="1" stop-color="#0050D8"/>
+    </linearGradient>
+    <linearGradient id="sb-smile" x1="40" y1="88" x2="88" y2="88" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7DD1FF"/>
+      <stop offset="1" stop-color="#B3E5FF"/>
+    </linearGradient>
+  </defs>
+  <rect x="12" y="12" width="104" height="104" rx="28" fill="url(#sb-gradient)"/>
+  <circle cx="52" cy="52" r="8" fill="white" opacity="0.9"/>
+  <circle cx="76" cy="52" r="8" fill="white" opacity="0.9"/>
+  <path d="M44 78C49 88 59 94 68.5 94C78 94 88 88 92 78" stroke="url(#sb-smile)" stroke-width="8" stroke-linecap="round"/>
+</svg>

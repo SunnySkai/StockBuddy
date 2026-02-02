@@ -1,0 +1,1990 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "StockBuddy API",
+    "description": "Comprehensive API for StockBuddy - Inventory, Transaction, and Event Management System with multi-tenant architecture, JWT authentication, and extensive business logic for managing members, vendors, banks, transactions, inventory records, events, and more.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "StockBuddy API Support",
+      "email": "support@stockbuddy.com"
+    },
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "/api",
+      "description": "API Base Path"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT token obtained from login endpoint. Include as: Authorization: Bearer <token>"
+      }
+    },
+    "schemas": {
+      "User": {
+        "type": "object",
+        "description": "User account information",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique user identifier"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "description": "User's email address (normalized)"
+          },
+          "username": {
+            "type": "string",
+            "nullable": true,
+            "description": "Optional username (unique within tenant)"
+          },
+          "full_name": {
+            "type": "string",
+            "description": "User's full display name"
+          },
+          "profile_pic_url": {
+            "type": "string",
+            "description": "URL to user's profile picture"
+          },
+          "is_admin": {
+            "type": "boolean",
+            "description": "Whether user has admin privileges"
+          },
+          "is_seller": {
+            "type": "boolean",
+            "description": "Whether user has seller privileges"
+          },
+          "organization_id": {
+            "type": "string",
+            "nullable": true,
+            "description": "ID of organization user belongs to"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Account creation timestamp"
+          }
+        }
+      },
+      "ApiResponse": {
+        "type": "object",
+        "description": "Standard API response wrapper",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the request was successful"
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable message (usually for errors)"
+          },
+          "data": {
+            "type": "object",
+            "description": "Response payload data"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "description": "Error response format",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": false,
+            "description": "Always false for errors"
+          },
+          "message": {
+            "type": "string",
+            "description": "Error description"
+          }
+        }
+      },
+      "Organization": {
+        "type": "object",
+        "description": "Organization/company information",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique organization identifier"
+          },
+          "name": {
+            "type": "string",
+            "description": "Organization display name"
+          },
+          "owner_user_id": {
+            "type": "string",
+            "description": "ID of organization owner"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Organization creation timestamp"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp"
+          }
+        }
+      },
+      "Member": {
+        "type": "object",
+        "description": "Member/customer record with team affiliation and membership details",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique member identifier"
+          },
+          "name": {
+            "type": "string",
+            "description": "Member's full name"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "description": "Member's email address"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "BANNED"
+            ],
+            "description": "Member account status"
+          },
+          "team_name": {
+            "type": "string",
+            "description": "Team display name"
+          },
+          "membership_price": {
+            "type": "number",
+            "description": "Membership fee amount"
+          }
+        }
+      },
+      "Transaction": {
+        "type": "object",
+        "description": "Financial transaction record with status tracking and payment details",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique transaction identifier"
+          },
+          "vendor_id": {
+            "type": "string",
+            "description": "Associated vendor/counterparty ID"
+          },
+          "amount": {
+            "type": "number",
+            "description": "Transaction amount"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "Pending",
+              "Partial",
+              "Paid",
+              "Cancelled"
+            ],
+            "description": "Payment status"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "purchase",
+              "order",
+              "sale",
+              "membership",
+              "manual"
+            ],
+            "description": "Transaction type"
+          }
+        }
+      },
+      "Vendor": {
+        "type": "object",
+        "description": "Vendor/counterparty for transactions and business relationships",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique vendor identifier"
+          },
+          "name": {
+            "type": "string",
+            "description": "Vendor/company name"
+          },
+          "balance": {
+            "type": "number",
+            "description": "Current account balance"
+          }
+        }
+      },
+      "Bank": {
+        "type": "object",
+        "description": "Bank account for transaction processing and balance tracking",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique bank account identifier"
+          },
+          "name": {
+            "type": "string",
+            "description": "Bank account name/description"
+          },
+          "balance": {
+            "type": "number",
+            "description": "Current account balance"
+          }
+        }
+      },
+      "InventoryRecord": {
+        "type": "object",
+        "description": "Inventory/ticket record with seat assignments and purchase/sale tracking",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique inventory record identifier"
+          },
+          "game_id": {
+            "type": "string",
+            "description": "Associated game/event identifier"
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Number of tickets/seats"
+          },
+          "area": {
+            "type": "string",
+            "description": "Stadium area/section"
+          },
+          "cost": {
+            "type": "number",
+            "description": "Purchase cost per unit"
+          },
+          "selling": {
+            "type": "number",
+            "description": "Selling price per unit"
+          }
+        }
+      },
+      "PersonalEvent": {
+        "type": "object",
+        "description": "User's personal calendar event with optional recurrence",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique event identifier"
+          },
+          "title": {
+            "type": "string",
+            "description": "Event title/name"
+          },
+          "start_time": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Event start date and time"
+          },
+          "repeat": {
+            "type": "string",
+            "enum": [
+              "none",
+              "daily",
+              "weekly",
+              "monthly",
+              "yearly"
+            ],
+            "description": "Recurrence pattern"
+          }
+        }
+      },
+      "BulkImportResponse": {
+        "type": "object",
+        "description": "Response for bulk import operations",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "processed": {
+                "type": "integer",
+                "description": "Total rows processed"
+              },
+              "created": {
+                "type": "integer",
+                "description": "Successfully created records"
+              },
+              "failed": {
+                "type": "integer",
+                "description": "Failed records"
+              },
+              "errors": {
+                "type": "array",
+                "description": "Detailed error information",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "rowNumber": {
+                      "type": "integer",
+                      "description": "Row number with error"
+                    },
+                    "message": {
+                      "type": "string",
+                      "description": "Error description"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Bad Request - Invalid parameters or validation errors",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "success": false,
+              "message": "Required parameter missing or invalid"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Unauthorized - Missing or invalid authentication token",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "success": false,
+              "message": "Access denied. Please provide a valid authentication token."
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Forbidden - Insufficient permissions",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "success": false,
+              "message": "Organization membership required"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Not Found - Resource doesn't exist",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "success": false,
+              "message": "Resource not found"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "Conflict - Resource already exists or constraint violation",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "success": false,
+              "message": "Resource already exists"
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/auth/signup": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "User Registration",
+        "description": "Create a new user account with email verification. Supports optional username and validates email uniqueness within tenant. Automatically generates JWT token upon successful registration.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "full_name",
+                  "email",
+                  "password"
+                ],
+                "properties": {
+                  "full_name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "User's full display name",
+                    "example": "John Doe"
+                  },
+                  "username": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Optional unique username (will be normalized to lowercase)",
+                    "example": "johndoe"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "description": "Email address (will be normalized and validated)",
+                    "example": "john.doe@example.com"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 6,
+                    "description": "Password (minimum 6 characters, must contain 1 digit, 1 uppercase, 1 lowercase)",
+                    "example": "SecurePass123"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "User created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "user": {
+                      "$ref": "#/components/schemas/User"
+                    },
+                    "auth_token": {
+                      "type": "string",
+                      "description": "JWT token for authentication (expires in 365 days)",
+                      "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "User Login",
+        "description": "Authenticate user with email and password. Returns JWT token for subsequent API calls. Email is normalized before validation.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "password"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "description": "User's email address",
+                    "example": "john.doe@example.com"
+                  },
+                  "password": {
+                    "type": "string",
+                    "description": "User's password",
+                    "example": "SecurePass123"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "user": {
+                      "$ref": "#/components/schemas/User"
+                    },
+                    "auth_token": {
+                      "type": "string",
+                      "description": "JWT token for authentication",
+                      "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "User Logout",
+        "description": "Invalidate current JWT token by adding it to blacklist. Token will no longer be accepted for authentication.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Logout successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/users/me": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Get Current User Profile",
+        "description": "Retrieve the authenticated user's profile information including organization details if applicable.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User profile retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "user": {
+                      "$ref": "#/components/schemas/User"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/auth/verify_email": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Check Email Availability",
+        "description": "Check if an email address is already associated with an existing account. Used for signup validation.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "john.doe@example.com"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Email check completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "has_account": {
+                      "type": "boolean",
+                      "description": "Whether email is already registered"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/send_otp": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Send OTP Code",
+        "description": "Generate and send a 4-digit OTP code via email for password reset or email verification. OTP expires in 2 minutes.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "template_type"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "john.doe@example.com"
+                  },
+                  "template_type": {
+                    "type": "string",
+                    "enum": [
+                      "SIGNUP",
+                      "PASSWORD_RESET"
+                    ],
+                    "example": "PASSWORD_RESET"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OTP sent successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/reset_password": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Reset Password",
+        "description": "Reset user password using verified OTP. Requires a valid OTP to have been verified for the email address.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "password"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "john.doe@example.com"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 6,
+                    "example": "NewSecurePass123"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Password reset successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/get_all": {
+      "post": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "List All Users",
+        "description": "Get paginated list of all users in the system. Supports pagination with limit and lastKey parameters.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 20
+                  },
+                  "lastKey": {
+                    "type": "string",
+                    "description": "Pagination key from previous response"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Users retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "users": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/User"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations": {
+      "post": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Create Organization",
+        "description": "Create a new organization and assign the current user as owner. User must not already belong to an organization.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "example": "Acme Corporation"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Organization created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "organization": {
+                      "$ref": "#/components/schemas/Organization"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/members": {
+      "get": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "List Members",
+        "description": "Get filtered list of organization members. Supports filtering by team, fixture, game, and search terms. Only returns ACTIVE members unless specifically filtered.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Search term for member name or email",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "team_names",
+            "in": "query",
+            "description": "Comma-separated list of team names to filter by",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Members retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Member"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "Create Member",
+        "description": "Create a new member record. Team information will be resolved via API Football if team_name is provided.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "email",
+                  "team_name",
+                  "membership_price"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "John Doe"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "john.doe@example.com"
+                  },
+                  "team_name": {
+                    "type": "string",
+                    "example": "Arsenal"
+                  },
+                  "membership_price": {
+                    "type": "number",
+                    "example": 50
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Member created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Member"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/members/export": {
+      "get": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "Export Members to CSV",
+        "description": "Export members list as CSV file with all member details. Supports template mode for downloading sample format.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "template",
+            "in": "query",
+            "description": "Return CSV template with sample data instead of actual members",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CSV file with members data",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/members/import": {
+      "post": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "Import Members from CSV/Excel",
+        "description": "Bulk import members from CSV or Excel file. Maximum 2000 rows per import. Processing is done in parallel with error reporting for failed rows.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "CSV or Excel file (max 10MB). Required columns: name, email, team_name, membership_price"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Import completed with results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkImportResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/transactions": {
+      "get": {
+        "tags": [
+          "Transactions"
+        ],
+        "summary": "List Transactions",
+        "description": "Get filtered list of transactions with comprehensive filtering options and transaction summary.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "vendor_id",
+            "in": "query",
+            "description": "Filter by specific vendor ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filter by transaction status",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "Pending",
+                "Partial",
+                "Paid",
+                "Cancelled"
+              ]
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "description": "Filter by transaction type",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "purchase",
+                "order",
+                "sale",
+                "membership",
+                "manual"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transactions retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "transactions": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Transaction"
+                          }
+                        },
+                        "summary": {
+                          "type": "object",
+                          "properties": {
+                            "total_amount": {
+                              "type": "number"
+                            },
+                            "pending_amount": {
+                              "type": "number"
+                            },
+                            "count": {
+                              "type": "integer"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/transactions/manual": {
+      "post": {
+        "tags": [
+          "Transactions"
+        ],
+        "summary": "Create Manual Transaction",
+        "description": "Create a manual transaction entry. Supports standard mode (requires bank account) and journal voucher mode (creates paired transactions).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "vendor_id",
+                  "type",
+                  "amount",
+                  "category",
+                  "direction",
+                  "mode"
+                ],
+                "properties": {
+                  "vendor_id": {
+                    "type": "string",
+                    "example": "vendor_123"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "manual"
+                    ]
+                  },
+                  "amount": {
+                    "type": "number",
+                    "minimum": 0.01,
+                    "example": 100.5
+                  },
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "other",
+                      "salary",
+                      "internal"
+                    ],
+                    "example": "other"
+                  },
+                  "direction": {
+                    "type": "string",
+                    "enum": [
+                      "in",
+                      "out"
+                    ],
+                    "example": "out"
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "standard",
+                      "journal_voucher"
+                    ],
+                    "example": "standard"
+                  },
+                  "bank_account_id": {
+                    "type": "string",
+                    "description": "Required for standard mode",
+                    "example": "bank_789"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Manual transaction created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Transaction"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vendors": {
+      "get": {
+        "tags": [
+          "Vendors"
+        ],
+        "summary": "List Vendors",
+        "description": "Get list of vendors/counterparties with search filtering and summary statistics.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Search term for vendor name",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Vendors retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "vendors": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Vendor"
+                          }
+                        },
+                        "summary": {
+                          "type": "object",
+                          "properties": {
+                            "count": {
+                              "type": "integer"
+                            },
+                            "total_balance": {
+                              "type": "number"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Vendors"
+        ],
+        "summary": "Create Vendor",
+        "description": "Create a new vendor/counterparty record for business relationships.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "ABC Tickets Ltd"
+                  },
+                  "balance": {
+                    "type": "number",
+                    "default": 0,
+                    "example": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Vendor created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Vendor"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/banks": {
+      "get": {
+        "tags": [
+          "Banks"
+        ],
+        "summary": "List Bank Accounts",
+        "description": "Get list of bank accounts with optional search filtering.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Search term for bank account name",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bank accounts retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Bank"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Banks"
+        ],
+        "summary": "Create Bank Account",
+        "description": "Create a new bank account record for transaction processing.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "Chase Business Checking"
+                  },
+                  "balance": {
+                    "type": "number",
+                    "default": 0,
+                    "example": 1000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Bank account created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Bank"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inventory-records": {
+      "get": {
+        "tags": [
+          "Inventory"
+        ],
+        "summary": "List Inventory Records",
+        "description": "Get list of inventory records with filtering options.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "query",
+            "description": "Filter by game ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filter by inventory status",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Inventory records retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/InventoryRecord"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inventory-records/purchases": {
+      "post": {
+        "tags": [
+          "Inventory"
+        ],
+        "summary": "Create Purchase Record",
+        "description": "Create a new inventory purchase record.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "game_id",
+                  "quantity",
+                  "bought_from",
+                  "bought_from_vendor_id",
+                  "cost"
+                ],
+                "properties": {
+                  "game_id": {
+                    "type": "string",
+                    "example": "game_123"
+                  },
+                  "quantity": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "example": 2
+                  },
+                  "area": {
+                    "type": "string",
+                    "example": "North Stand"
+                  },
+                  "bought_from": {
+                    "type": "string",
+                    "example": "Ticket Vendor Ltd"
+                  },
+                  "bought_from_vendor_id": {
+                    "type": "string",
+                    "example": "vendor_456"
+                  },
+                  "cost": {
+                    "type": "number",
+                    "example": 75
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Purchase record created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/InventoryRecord"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "Get Event Categories",
+        "description": "Get available event categories and offerings including sports and entertainment options.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Event categories retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "categories": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "sports": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events/sports/football/leagues": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "Get Football Leagues",
+        "description": "Get list of football leagues with optional filtering by season and country.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "season",
+            "in": "query",
+            "description": "Filter by season year",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "country",
+            "in": "query",
+            "description": "Filter by country name",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Football leagues retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "country": {
+                            "type": "string"
+                          },
+                          "season": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/personal-events": {
+      "get": {
+        "tags": [
+          "Personal Events"
+        ],
+        "summary": "List Personal Events",
+        "description": "Get user's personal events with optional date range filtering.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Start date filter (ISO format)",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "End date filter (ISO format)",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Personal events retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PersonalEvent"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Personal Events"
+        ],
+        "summary": "Create Personal Event",
+        "description": "Create a new personal event with optional recurrence pattern.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "title",
+                  "start_time"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "example": "Team Meeting"
+                  },
+                  "description": {
+                    "type": "string",
+                    "example": "Weekly team sync"
+                  },
+                  "start_time": {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2024-01-15T10:00:00Z"
+                  },
+                  "end_time": {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2024-01-15T11:00:00Z"
+                  },
+                  "repeat": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "daily",
+                      "weekly",
+                      "monthly",
+                      "yearly"
+                    ],
+                    "default": "none"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Personal event created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PersonalEvent"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/s3/get_presigned_url": {
+      "post": {
+        "tags": [
+          "File Management"
+        ],
+        "summary": "Get S3 Presigned URL",
+        "description": "Generate a presigned URL for secure file upload/download to/from S3.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file_key",
+                  "content_type"
+                ],
+                "properties": {
+                  "file_key": {
+                    "type": "string",
+                    "example": "uploads/documents/invoice_123.pdf"
+                  },
+                  "content_type": {
+                    "type": "string",
+                    "example": "application/pdf"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Presigned URL generated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "url": {
+                      "type": "string",
+                      "description": "Presigned URL for file upload/download"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

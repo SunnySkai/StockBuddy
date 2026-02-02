@@ -1,0 +1,17 @@
+{
+  "name": "stockbuddy-backend",
+  "version": "1.0.0",
+  "description": "StockBuddy Backend API with local development support",
+  "scripts": {
+    "setup-local-db": "node setup-local-dynamodb.js",
+    "start:local": "cd src && npm run start:local",
+    "start": "cd src && npm start",
+    "install-all": "npm install && cd src && npm install && cd ../iac && npm install"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-dynamodb": "^3.835.0"
+  }
+}
