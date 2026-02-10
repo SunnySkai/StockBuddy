@@ -36,7 +36,7 @@ export const FloatingChatbot: React.FC = () => {
       {
         id: '1',
         role: 'assistant' as const,
-        content: 'Hi! How can I help you?',
+        content: 'Hi! I\'m Buddy, your StockBuddy assistant! 👋',
         timestamp: new Date()
       }
     ]
@@ -51,8 +51,96 @@ export const FloatingChatbot: React.FC = () => {
   const [showClearModal, setShowClearModal] = useState(false)
   const [clarificationState, setClarificationState] = useState<ClarificationState | undefined>(undefined)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   const [vendors, setVendors] = useState<any[]>([])
   const [banks, setBanks] = useState<any[]>([])
+  
+  // Message history navigation
+  const [historyIndex, setHistoryIndex] = useState(-1)
+  const [tempInput, setTempInput] = useState('')
+  
+  // Track current conversation tile (session)
+  const [currentTileIndex, setCurrentTileIndex] = useState(0)
+  
+  // Get user message history (only user messages, not assistant or system)
+  const getUserMessageHistory = () => {
+    return messages
+      .filter(msg => msg.role === 'user')
+      .map(msg => msg.content)
+      .reverse() // Most recent first
+  }
+  
+  // Helper function to convert technical errors to friendly messages
+  const getFriendlyErrorMessage = (technicalError: string, transactionType: 'purchase' | 'order' | 'manual_transaction' | 'counterparty'): string => {
+    const errorLower = technicalError.toLowerCase()
+    
+    // Common error patterns
+    if (errorLower.includes('not found') || errorLower.includes('does not exist')) {
+      if (transactionType === 'purchase') {
+        return "Hmm, I couldn't find that vendor or event in the system. Could you double-check the names and try again?"
+      } else if (transactionType === 'order') {
+        return "I couldn't find that customer or event. Mind checking the details and trying once more?"
+      } else if (transactionType === 'counterparty') {
+        return "Looks like there's an issue creating that contact. The name might already exist or there's missing information."
+      }
+      return "I couldn't find that in the system. Could you verify the details?"
+    }
+    
+    if (errorLower.includes('already exists') || errorLower.includes('duplicate')) {
+      return "Looks like that already exists in the system. Maybe try a different name?"
+    }
+    
+    if (errorLower.includes('invalid') || errorLower.includes('validation')) {
+      return "Some of the information doesn't look quite right. Could you check the details and try again?"
+    }
+    
+    if (errorLower.includes('required') || errorLower.includes('missing')) {
+      return "I'm missing some required information. Let's try filling in all the details again."
+    }
+    
+    if (errorLower.includes('unauthorized') || errorLower.includes('permission')) {
+      return "Oops, looks like you don't have permission to do that. You might need to check with an admin."
+    }
+    
+    if (errorLower.includes('network') || errorLower.includes('connection')) {
+      return "I'm having trouble connecting right now. Could you try again in a moment?"
+    }
+    
+    // Generic friendly error
+    return `Something went wrong on my end. Here's what I know: ${technicalError}\n\nWant to try again?`
+  }
+  
+  // Get messages for current tile only (after last tile separator)
+  const getCurrentTileMessages = () => {
+    // Find the last tile separator or start from beginning
+    let startIndex = 0
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'system' && messages[i].content === '__TILE_SEPARATOR__') {
+        startIndex = i + 1
+        break
+      }
+    }
+    return messages.slice(startIndex)
+  }
+  
+  // Start a new conversation tile (invisible separator for context management)
+  const startNewTile = () => {
+    const newTileMessage: ChatbotMessage = {
+      id: Date.now().toString(),
+      role: 'system',
+      content: '__TILE_SEPARATOR__', // Internal marker, not displayed
+      timestamp: new Date()
+    }
+    setMessages(prev => [...prev, newTileMessage])
+    setCurrentTileIndex(prev => prev + 1)
+  }
+  
+  // Auto-focus input when chatbot opens or messages change
+  useEffect(() => {
+    if (isOpen && !isMinimized && inputRef.current && !isProcessing) {
+      inputRef.current.focus()
+    }
+  }, [isOpen, isMinimized, messages, isProcessing])
   
   // Save messages to localStorage whenever they change
   useEffect(() => {
@@ -240,11 +328,28 @@ export const FloatingChatbot: React.FC = () => {
     addMessage('user', userInput)
     setIsProcessing(true)
     
+    // Check for greetings and respond with personality
+    const greetingPatterns = /^(hi|hello|hey|hiya|howdy|greetings|good morning|good afternoon|good evening|what's up|whats up|sup|yo)\b/i
+    if (greetingPatterns.test(userInput)) {
+      const greetingResponses = [
+        'Hey there! 👋 I\'m Buddy, ready to help with your ticket inventory. What can I do for you today?',
+        'Hello! 😊 Buddy here! Need help with purchases, sales, or checking balances? Just let me know!',
+        'Hi! 🎫 I\'m Buddy, your ticket management assistant. How can I help you today?',
+        'Hey! 👋 Buddy at your service! Whether it\'s recording transactions or checking vendor balances, I\'ve got you covered!',
+        'Hello there! 😊 I\'m Buddy! Ready to help you manage your inventory. What would you like to do?'
+      ]
+      const randomGreeting = greetingResponses[Math.floor(Math.random() * greetingResponses.length)]
+      addMessage('assistant', randomGreeting)
+      setIsProcessing(false)
+      return
+    }
+    
     // Add a temporary "typing" message
     addMessage('assistant', '...', { id: 'typing-indicator' })
 
     try {
-      // Pass clarification state if we're in a clarification flow
+      // Pass clarification state and only current tile messages for context
+      const currentTileMessages = getCurrentTileMessages()
       const response = await analyzeInput(
         userInput, 
         vendors, 
@@ -253,7 +358,9 @@ export const FloatingChatbot: React.FC = () => {
         currency, 
         convertToBase, 
         formatCurrency,
-        clarificationState
+        clarificationState,
+        [],
+        currentTileMessages // Pass only current tile messages
       )
       
       // Remove typing indicator
@@ -302,6 +409,12 @@ export const FloatingChatbot: React.FC = () => {
             `Target Selling: ${formatCurrency(targetSelling)} (Asking price)\n` +
             `Projected Profit: ${formatCurrency(projectedProfit)} (Based on target sell)`
           addMessage('assistant', formattedResult)
+          
+          // Clear clarification state before starting new tile
+          setClarificationState(undefined)
+          
+          // Start a new conversation tile after showing P&L results
+          setTimeout(() => startNewTile(), 500)
         } else {
           const errorMsg = result.ok ? 'Failed to fetch profit/loss data' : result.error
           addMessage('assistant', errorMsg)
@@ -342,8 +455,16 @@ export const FloatingChatbot: React.FC = () => {
             `Outstanding (Owed): ${formatCurrency(totals.owed)}`
           
           addMessage('assistant', formattedResult)
-        } else {
+          
+          // Clear clarification state before starting new tile
+          setClarificationState(undefined)
+          
+          // Start a new conversation tile after showing balance results
+          setTimeout(() => startNewTile(), 500)
+        } else if (!result.ok) {
           addMessage('assistant', result.error)
+        } else {
+          addMessage('assistant', 'Failed to fetch vendor balance data')
         }
       } else {
         // Clear clarification state
@@ -412,24 +533,33 @@ export const FloatingChatbot: React.FC = () => {
         
         if (result.ok) {
           addMessage('assistant', '✅ Purchase created successfully!')
+          // Start a new conversation tile after successful transaction
+          setTimeout(() => startNewTile(), 500)
         } else {
-          addMessage('assistant', `❌ Error: ${result.error}`)
+          const friendlyError = getFriendlyErrorMessage(result.error || 'Unknown error', 'purchase')
+          addMessage('assistant', friendlyError)
         }
       } else if (intent.intent === 'order') {
         const result = await executeOrder(token, payload)
         
         if (result.ok) {
           addMessage('assistant', '✅ Order created successfully!')
+          // Start a new conversation tile after successful transaction
+          setTimeout(() => startNewTile(), 500)
         } else {
-          addMessage('assistant', `❌ Error: ${result.error}`)
+          const friendlyError = getFriendlyErrorMessage(result.error || 'Unknown error', 'order')
+          addMessage('assistant', friendlyError)
         }
       } else if (intent.intent === 'manual_transaction') {
         const result = await executeManualTransaction(token, payload)
         
         if (result.ok) {
           addMessage('assistant', '✅ Transaction created successfully!')
+          // Start a new conversation tile after successful transaction
+          setTimeout(() => startNewTile(), 500)
         } else {
-          addMessage('assistant', `❌ Error: ${result.error}`)
+          const friendlyError = getFriendlyErrorMessage(result.error || 'Unknown error', 'manual_transaction')
+          addMessage('assistant', friendlyError)
         }
       } else if (intent.intent === 'create_counterparty') {
         const result = await executeCreateCounterparty(token, payload)
@@ -442,7 +572,8 @@ export const FloatingChatbot: React.FC = () => {
             setVendors(vendorsResult.data.data.vendors)
           }
         } else {
-          addMessage('assistant', `❌ Error: ${result.error}`)
+          const friendlyError = getFriendlyErrorMessage(result.error || 'Unknown error', 'counterparty')
+          addMessage('assistant', friendlyError)
         }
       }
     } catch (error) {
@@ -472,7 +603,7 @@ export const FloatingChatbot: React.FC = () => {
     const initialMessage: ChatbotMessage = {
       id: '1',
       role: 'assistant',
-      content: 'Hi! How can I help you?',
+      content: 'Hi! I\'m Buddy, your StockBuddy assistant! 👋',
       timestamp: new Date()
     }
     setMessages([initialMessage])
@@ -548,7 +679,7 @@ export const FloatingChatbot: React.FC = () => {
           <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-3 rounded-t-lg">
             <div className="flex items-center gap-2">
               <MessageSquare className="h-5 w-5" />
-              <h3 className="font-semibold">StockBuddy Assistant</h3>
+              <h3 className="font-semibold">Buddy - Your AI Assistant</h3>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -592,7 +723,13 @@ export const FloatingChatbot: React.FC = () => {
           {!isMinimized && (
             <>
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                {messages.map(msg => (
+                {messages.map(msg => {
+                  // Skip tile separator (internal marker, not displayed)
+                  if (msg.role === 'system' && msg.content === '__TILE_SEPARATOR__') {
+                    return null
+                  }
+                  
+                  return (
                   <div
                     key={msg.id}
                     className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -746,7 +883,8 @@ export const FloatingChatbot: React.FC = () => {
                       )}
                     </div>
                   </div>
-                ))}
+                  )
+                })}
                 <div ref={messagesEndRef} />
               </div>
 
@@ -754,10 +892,46 @@ export const FloatingChatbot: React.FC = () => {
               <div className="border-t border-gray-200 p-3">
                 <div className="flex gap-2">
                   <input
+                    ref={inputRef}
                     type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleSend()
+                        setHistoryIndex(-1)
+                        setTempInput('')
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault()
+                        const history = getUserMessageHistory()
+                        if (history.length === 0) return
+                        
+                        // Save current input when starting to navigate
+                        if (historyIndex === -1) {
+                          setTempInput(input)
+                        }
+                        
+                        const newIndex = Math.min(historyIndex + 1, history.length - 1)
+                        setHistoryIndex(newIndex)
+                        setInput(history[newIndex])
+                      } else if (e.key === 'ArrowDown') {
+                        e.preventDefault()
+                        const history = getUserMessageHistory()
+                        
+                        if (historyIndex === -1) return
+                        
+                        const newIndex = historyIndex - 1
+                        if (newIndex === -1) {
+                          // Restore the original input
+                          setInput(tempInput)
+                          setHistoryIndex(-1)
+                          setTempInput('')
+                        } else {
+                          setHistoryIndex(newIndex)
+                          setInput(history[newIndex])
+                        }
+                      }
+                    }}
                     placeholder="Type your message..."
                     disabled={isProcessing}
                     className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"

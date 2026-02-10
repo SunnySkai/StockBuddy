@@ -51,6 +51,7 @@ const navItems: NavItem[] = [
   { label: 'Analytics', to: '/analytics', icon: BarChart3, disabled: true },
   { label: 'Calendar', to: '/calendar', icon: Calendar },
   { label: 'Directory', to: '/directory', icon: MessageCircle },
+  { label: 'AI Assistant', to: '/chatbot', icon: Bot },
   {
     label: 'Accounting',
     icon: Wallet,
@@ -61,8 +62,7 @@ const navItems: NavItem[] = [
     ]
   },
   { label: 'Memberships', to: '/members', icon: UsersRound },
-  { label: 'Organizations', to: '/organizations', icon: Users },
-  { label: 'AI Assistant', to: '/chatbot', icon: Bot }
+  { label: 'Organizations', to: '/organizations', icon: Users }
 ]
 
 const DashboardLayout = ({ header, headerActions, children }: DashboardLayoutProps) => {

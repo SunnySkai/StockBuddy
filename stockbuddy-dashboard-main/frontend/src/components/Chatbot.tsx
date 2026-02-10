@@ -2,9 +2,10 @@ import React, { useState, useRef, useEffect } from 'react'
 import { analyzeInput, executePurchase, executeOrder, executeManualTransaction, executeCreateCounterparty, executeQuery, executeProfitLossQuery, executeVendorBalanceQuery, formatTransactionSummary, type ChatbotMessage, type ClarificationState } from '../api/chatbot'
 import { useSession } from '../context/SessionContext'
 import { useCurrency } from '../context/CurrencyContext'
-import { fetchVendors } from '../api/vendors'
+import { fetchVendors, createVendor } from '../api/vendors'
 import { fetchBanks } from '../api/banks'
 import { searchFixturesByName } from '../api/events'
+import { fetchDirectoryEntries } from '../api/directory'
 import { TransactionEditForm } from './TransactionEditForm'
 
 type ChatbotProps = {
@@ -34,7 +35,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ fullPage = false }) => {
       {
         id: '1',
         role: 'assistant' as const,
-        content: 'Hi! How can I help you?',
+        content: 'Hi! I\'m Buddy, your StockBuddy assistant! 👋',
         timestamp: new Date()
       }
     ]
@@ -49,8 +50,97 @@ export const Chatbot: React.FC<ChatbotProps> = ({ fullPage = false }) => {
   const [showClearModal, setShowClearModal] = useState(false)
   const [clarificationState, setClarificationState] = useState<ClarificationState | undefined>(undefined)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   const [vendors, setVendors] = useState<any[]>([])
   const [banks, setBanks] = useState<any[]>([])
+  const [counterparties, setCounterparties] = useState<any[]>([])
+  
+  // Message history navigation
+  const [historyIndex, setHistoryIndex] = useState(-1)
+  const [tempInput, setTempInput] = useState('')
+  
+  // Track current conversation tile (session)
+  const [currentTileIndex, setCurrentTileIndex] = useState(0)
+  
+  // Get user message history (only user messages, not assistant or system)
+  const getUserMessageHistory = () => {
+    return messages
+      .filter(msg => msg.role === 'user')
+      .map(msg => msg.content)
+      .reverse() // Most recent first
+  }
+  
+  // Helper function to convert technical errors to friendly messages
+  const getFriendlyErrorMessage = (technicalError: string, transactionType: 'purchase' | 'order' | 'manual_transaction' | 'counterparty'): string => {
+    const errorLower = technicalError.toLowerCase()
+    
+    // Common error patterns
+    if (errorLower.includes('not found') || errorLower.includes('does not exist')) {
+      if (transactionType === 'purchase') {
+        return "Hmm, I couldn't find that vendor or event in the system. Could you double-check the names and try again?"
+      } else if (transactionType === 'order') {
+        return "I couldn't find that customer or event. Mind checking the details and trying once more?"
+      } else if (transactionType === 'counterparty') {
+        return "Looks like there's an issue creating that contact. The name might already exist or there's missing information."
+      }
+      return "I couldn't find that in the system. Could you verify the details?"
+    }
+    
+    if (errorLower.includes('already exists') || errorLower.includes('duplicate')) {
+      return "Looks like that already exists in the system. Maybe try a different name?"
+    }
+    
+    if (errorLower.includes('invalid') || errorLower.includes('validation')) {
+      return "Some of the information doesn't look quite right. Could you check the details and try again?"
+    }
+    
+    if (errorLower.includes('required') || errorLower.includes('missing')) {
+      return "I'm missing some required information. Let's try filling in all the details again."
+    }
+    
+    if (errorLower.includes('unauthorized') || errorLower.includes('permission')) {
+      return "Oops, looks like you don't have permission to do that. You might need to check with an admin."
+    }
+    
+    if (errorLower.includes('network') || errorLower.includes('connection')) {
+      return "I'm having trouble connecting right now. Could you try again in a moment?"
+    }
+    
+    // Generic friendly error
+    return `Something went wrong on my end. Here's what I know: ${technicalError}\n\nWant to try again?`
+  }
+  
+  // Get messages for current tile only (after last tile separator)
+  const getCurrentTileMessages = () => {
+    // Find the last tile separator or start from beginning
+    let startIndex = 0
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'system' && messages[i].content === '__TILE_SEPARATOR__') {
+        startIndex = i + 1
+        break
+      }
+    }
+    return messages.slice(startIndex)
+  }
+  
+  // Start a new conversation tile (invisible separator for context management)
+  const startNewTile = () => {
+    const newTileMessage: ChatbotMessage = {
+      id: Date.now().toString(),
+      role: 'system',
+      content: '__TILE_SEPARATOR__', // Internal marker, not displayed
+      timestamp: new Date()
+    }
+    setMessages(prev => [...prev, newTileMessage])
+    setCurrentTileIndex(prev => prev + 1)
+  }
+  
+  // Auto-focus input when component mounts or messages change
+  useEffect(() => {
+    if (inputRef.current && !isProcessing) {
+      inputRef.current.focus()
+    }
+  }, [messages, isProcessing])
   
   // Save messages to localStorage whenever they change
   useEffect(() => {
@@ -109,6 +199,16 @@ export const Chatbot: React.FC<ChatbotProps> = ({ fullPage = false }) => {
         }
       })
       
+      // Load counterparties from directory using API client
+      fetchDirectoryEntries(token).then(result => {
+        if (result.ok && result.data.data.counterparties) {
+          setCounterparties(result.data.data.counterparties)
+          console.log('Loaded counterparties:', result.data.data.counterparties.length)
+        }
+      }).catch(err => {
+        console.error('Error loading counterparties:', err)
+      })
+      
       console.log('Chatbot ready - events will be auto-detected from user input')
     }
   }, [token])
@@ -120,7 +220,52 @@ export const Chatbot: React.FC<ChatbotProps> = ({ fullPage = false }) => {
     }
     
     try {
-      const trimmed = query.replace(/\s+/g, ' ').trim()
+      // Normalize team nicknames to formal names
+      const normalizeTeamName = (name: string): string => {
+        const nicknames: Record<string, string> = {
+          'spurs': 'Tottenham',
+          'gunners': 'Arsenal',
+          'blues': 'Chelsea', // Default to Chelsea, context-dependent
+          'reds': 'Liverpool', // Default to Liverpool, context-dependent
+          'red devils': 'Manchester United',
+          'citizens': 'Manchester City',
+          'city': 'Manchester City',
+          'united': 'Manchester United',
+          'hammers': 'West Ham',
+          'saints': 'Southampton',
+          'toffees': 'Everton',
+          'magpies': 'Newcastle',
+          'foxes': 'Leicester',
+          'wolves': 'Wolverhampton',
+          'villa': 'Aston Villa',
+          'palace': 'Crystal Palace',
+          'eagles': 'Crystal Palace',
+          'seagulls': 'Brighton',
+          'bees': 'Brentford',
+          'cherries': 'Bournemouth',
+          'clarets': 'Burnley',
+          'blades': 'Sheffield United',
+          'owls': 'Sheffield Wednesday',
+          'whites': 'Leeds', // Default to Leeds, context-dependent
+          'cottagers': 'Fulham',
+          'hornets': 'Watford',
+          'canaries': 'Norwich'
+        }
+        
+        const lowerName = name.toLowerCase().trim()
+        return nicknames[lowerName] || name
+      }
+      
+      // Normalize the query by replacing nicknames
+      let normalizedQuery = query
+      const words = query.split(/\s+/)
+      const normalizedWords = words.map(word => normalizeTeamName(word))
+      if (normalizedWords.join(' ') !== query) {
+        normalizedQuery = normalizedWords.join(' ')
+        console.log(`🔄 Normalized team nicknames: "${query}" → "${normalizedQuery}"`)
+      }
+      
+      const trimmed = normalizedQuery.replace(/\s+/g, ' ').trim()
       
       // Parse query into tokens (same as FixtureSearch)
       const splitRegex = /\s+(?:vs|vs\.|v|v\.|@)\s+/i
@@ -134,16 +279,16 @@ export const Chatbot: React.FC<ChatbotProps> = ({ fullPage = false }) => {
       const homeTokens = sanitizeTokens(homeSegment)
       const awayTokens = sanitizeTokens(awaySegment)
       
-      const normalizedQuery = trimmed
+      const normalizedForSearch = trimmed
         .replace(/\b(?:vs|vs\.|v|v\.|@)\b/gi, ' ')
         .replace(/\s+/g, ' ')
         .trim()
       
-      const normalizedTokens = normalizedQuery.toLowerCase().split(/\s+/).filter(Boolean)
+      const normalizedTokens = normalizedForSearch.toLowerCase().split(/\s+/).filter(Boolean)
       
       // Generate candidate queries (same as FixtureSearch)
       const candidates = new Set<string>()
-      if (normalizedQuery) candidates.add(normalizedQuery)
+      if (normalizedForSearch) candidates.add(normalizedForSearch)
       if (homeTokens.length) candidates.add(homeTokens.join(' '))
       if (awayTokens.length) candidates.add(awayTokens.join(' '))
       normalizedTokens.forEach(token => candidates.add(token))
@@ -236,11 +381,28 @@ export const Chatbot: React.FC<ChatbotProps> = ({ fullPage = false }) => {
     addMessage('user', userInput)
     setIsProcessing(true)
     
+    // Check for greetings and respond with personality
+    const greetingPatterns = /^(hi|hello|hey|hiya|howdy|greetings|good morning|good afternoon|good evening|what's up|whats up|sup|yo)\b/i
+    if (greetingPatterns.test(userInput)) {
+      const greetingResponses = [
+        'Hey there! 👋 I\'m Buddy, ready to help with your ticket inventory. What can I do for you today?',
+        'Hello! 😊 Buddy here! Need help with purchases, sales, or checking balances? Just let me know!',
+        'Hi! 🎫 I\'m Buddy, your ticket management assistant. How can I help you today?',
+        'Hey! 👋 Buddy at your service! Whether it\'s recording transactions or checking vendor balances, I\'ve got you covered!',
+        'Hello there! 😊 I\'m Buddy! Ready to help you manage your inventory. What would you like to do?'
+      ]
+      const randomGreeting = greetingResponses[Math.floor(Math.random() * greetingResponses.length)]
+      addMessage('assistant', randomGreeting)
+      setIsProcessing(false)
+      return
+    }
+    
     // Add a temporary "typing" message
     addMessage('assistant', '...', { id: 'typing-indicator' })
 
     try {
-      // Pass clarification state if we're in a clarification flow
+      // Pass clarification state and only current tile messages for context
+      const currentTileMessages = getCurrentTileMessages()
       const response = await analyzeInput(
         userInput, 
         vendors, 
@@ -249,7 +411,9 @@ export const Chatbot: React.FC<ChatbotProps> = ({ fullPage = false }) => {
         currency, 
         convertToBase, 
         formatCurrency,
-        clarificationState
+        clarificationState,
+        counterparties,
+        currentTileMessages // Pass only current tile messages
       )
       
       // Remove typing indicator
@@ -258,10 +422,12 @@ export const Chatbot: React.FC<ChatbotProps> = ({ fullPage = false }) => {
       // Handle clarification state from response
       if (response.clarificationState) {
         console.log('📝 Received clarification state:', response.clarificationState)
+        console.log('📝 Action buttons:', response.actionButtons)
         setClarificationState(response.clarificationState)
         addMessage('assistant', response.message, {
           intent: response.intent,
-          clarificationState: response.clarificationState
+          clarificationState: response.clarificationState,
+          actionButtons: response.actionButtons
         })
       } else if (response.requiresConfirmation) {
         // Clear clarification state when we reach confirmation
@@ -298,6 +464,12 @@ export const Chatbot: React.FC<ChatbotProps> = ({ fullPage = false }) => {
             `Target Selling: ${formatCurrency(targetSelling)} (Asking price)\n` +
             `Projected Profit: ${formatCurrency(projectedProfit)} (Based on target sell)`
           addMessage('assistant', formattedResult)
+          
+          // Clear clarification state before starting new tile
+          setClarificationState(undefined)
+          
+          // Start a new conversation tile after showing P&L results
+          setTimeout(() => startNewTile(), 500)
         } else {
           const errorMsg = result.ok ? 'Failed to fetch profit/loss data' : result.error
           addMessage('assistant', errorMsg)
@@ -338,8 +510,15 @@ export const Chatbot: React.FC<ChatbotProps> = ({ fullPage = false }) => {
             `Outstanding (Owed): ${formatCurrency(totals.owed)}`
           
           addMessage('assistant', formattedResult)
+          
+          // Clear clarification state before starting new tile
+          setClarificationState(undefined)
+          
+          // Start a new conversation tile after showing balance results
+          setTimeout(() => startNewTile(), 500)
         } else {
-          addMessage('assistant', result.error)
+          const errorMsg = !result.ok ? result.error : 'Failed to fetch counterparty balance'
+          addMessage('assistant', errorMsg)
         }
       } else {
         // Clear clarification state
@@ -375,18 +554,18 @@ export const Chatbot: React.FC<ChatbotProps> = ({ fullPage = false }) => {
       if (!payload.game_id) validationErrors.push('Event/Game is required')
       if (!payload.quantity || payload.quantity < 1) validationErrors.push('Quantity must be at least 1')
       if (!payload.area) validationErrors.push('Area/Section is required')
-      if (!payload.bought_from_vendor_id) validationErrors.push('Vendor (Bought From) is required')
+      if (!payload.bought_from_vendor_id) validationErrors.push('Counterparty (Bought From) is required')
       if (!payload.cost || payload.cost <= 0) validationErrors.push('Total Cost must be greater than 0')
     } else if (intent.intent === 'order') {
       if (!payload.game_id) validationErrors.push('Event/Game is required')
       if (!payload.quantity || payload.quantity < 1) validationErrors.push('Quantity must be at least 1')
       if (!payload.area) validationErrors.push('Area/Section is required')
-      if (!payload.sold_to_vendor_id) validationErrors.push('Vendor (Sold To) is required')
+      if (!payload.sold_to_vendor_id) validationErrors.push('Counterparty (Sold To) is required')
       if (!payload.selling || payload.selling <= 0) validationErrors.push('Selling Price must be greater than 0')
     } else if (intent.intent === 'manual_transaction') {
       if (!payload.amount || payload.amount <= 0) validationErrors.push('Amount must be greater than 0')
       if (payload.mode === 'standard' && !payload.bank_account_id) validationErrors.push('Bank Account is required')
-      if (!payload.vendor_id) validationErrors.push('Vendor is required')
+      if (!payload.vendor_id) validationErrors.push('Counterparty is required')
     } else if (intent.intent === 'create_counterparty') {
       if (!payload.name) validationErrors.push('Name is required')
       if (!payload.phone) validationErrors.push('Phone is required')
@@ -408,35 +587,62 @@ export const Chatbot: React.FC<ChatbotProps> = ({ fullPage = false }) => {
         
         if (result.ok) {
           addMessage('assistant', '✅ Purchase created successfully!')
+          // Start a new conversation tile after successful transaction
+          setTimeout(() => startNewTile(), 500)
         } else {
-          addMessage('assistant', `❌ Error: ${result.error}`)
+          const friendlyError = getFriendlyErrorMessage(result.error || 'Unknown error', 'purchase')
+          addMessage('assistant', friendlyError)
         }
       } else if (intent.intent === 'order') {
         const result = await executeOrder(token, payload)
         
         if (result.ok) {
           addMessage('assistant', '✅ Order created successfully!')
+          // Start a new conversation tile after successful transaction
+          setTimeout(() => startNewTile(), 500)
         } else {
-          addMessage('assistant', `❌ Error: ${result.error}`)
+          const friendlyError = getFriendlyErrorMessage(result.error || 'Unknown error', 'order')
+          addMessage('assistant', friendlyError)
         }
       } else if (intent.intent === 'manual_transaction') {
         const result = await executeManualTransaction(token, payload)
         
         if (result.ok) {
           addMessage('assistant', '✅ Transaction created successfully!')
+          // Start a new conversation tile after successful transaction
+          setTimeout(() => startNewTile(), 500)
         } else {
-          addMessage('assistant', `❌ Error: ${result.error}`)
+          const friendlyError = getFriendlyErrorMessage(result.error || 'Unknown error', 'manual_transaction')
+          addMessage('assistant', friendlyError)
         }
       } else if (intent.intent === 'create_counterparty') {
         const result = await executeCreateCounterparty(token, payload)
         
         if (result.ok) {
-          addMessage('assistant', '✅ Counterparty created successfully!')
-          // Reload vendors
+          // Reload vendors and counterparties
           const vendorsResult = await fetchVendors(token)
           if (vendorsResult.ok) {
             setVendors(vendorsResult.data.data.vendors)
           }
+          
+          // Reload counterparties using API client
+          const counterpartiesResult = await fetchDirectoryEntries(token)
+          if (counterpartiesResult.ok && counterpartiesResult.data.data.counterparties) {
+            setCounterparties(counterpartiesResult.data.data.counterparties)
+          }
+          
+          // Check if there was a pending transaction
+          if (clarificationState && clarificationState.partialPayload) {
+            const originalIntent = clarificationState.partialPayload.type === 'manual' ? 'manual_transaction' : 
+                                   clarificationState.partialPayload.bought_from ? 'purchase' : 'order'
+            
+            addMessage('assistant', `✅ Counterparty "${payload.name}" created successfully!\n\nWould you like to continue with your original ${originalIntent === 'purchase' ? 'purchase' : originalIntent === 'order' ? 'sale' : 'payment'}? Please type your transaction again.`)
+          } else {
+            addMessage('assistant', '✅ Counterparty created successfully!')
+          }
+          
+          // Clear clarification state
+          setClarificationState(undefined)
         } else {
           addMessage('assistant', `❌ Error: ${result.error}`)
         }
@@ -461,14 +667,54 @@ export const Chatbot: React.FC<ChatbotProps> = ({ fullPage = false }) => {
     setPendingConfirmation(null)
     setEditMode(false)
     setEditedPayload(null)
+    setClarificationState(undefined)
     addMessage('assistant', 'Action cancelled.')
+  }
+  
+  const handleActionButtonClick = async (action: 'create_counterparty' | 'retry_name', data: any) => {
+    if (action === 'create_counterparty' && token) {
+      // Create counterparty directly without asking for phone
+      addMessage('user', `Create "${data.name}"`)
+      setIsProcessing(true)
+      
+      try {
+        // Create vendor (counterparty) with just name and balance 0 using API client
+        const result = await createVendor(token, {
+          name: data.name,
+          balance: 0
+        })
+        
+        if (result.ok) {
+          // Reload vendors and counterparties
+          const vendorsResult = await fetchVendors(token)
+          if (vendorsResult.ok) {
+            setVendors(vendorsResult.data.data.vendors)
+          }
+          
+          // Reload counterparties using API client
+          const counterpartiesResult = await fetchDirectoryEntries(token)
+          if (counterpartiesResult.ok && counterpartiesResult.data.data.counterparties) {
+            setCounterparties(counterpartiesResult.data.data.counterparties)
+          }
+          
+          addMessage('assistant', `✅ Counterparty "${data.name}" created successfully!\n\nYou can now use this counterparty in your transactions. Please type your transaction again.`)
+          setClarificationState(undefined)
+        } else {
+          addMessage('assistant', `❌ Error creating counterparty: ${result.error || 'Unknown error'}`)
+        }
+      } catch (error) {
+        addMessage('assistant', `❌ Error creating counterparty: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      } finally {
+        setIsProcessing(false)
+      }
+    }
   }
   
   const handleClearHistory = () => {
     const initialMessage: ChatbotMessage = {
       id: '1',
       role: 'assistant',
-      content: 'Hi! How can I help you?',
+      content: 'Hi! I\'m Buddy, your StockBuddy assistant! 👋',
       timestamp: new Date()
     }
     setMessages([initialMessage])
@@ -487,12 +733,12 @@ export const Chatbot: React.FC<ChatbotProps> = ({ fullPage = false }) => {
       return `📊 Transaction Summary:\n\nTotal: £${summary.total?.toFixed(2) || 0}\nPaid: £${summary.paid?.toFixed(2) || 0}\nPending: £${summary.pending?.toFixed(2) || 0}\nOwed: £${summary.owed?.toFixed(2) || 0}`
     }
     
-    // Format vendor data
+    // Format counterparty data
     if (data.data?.vendors) {
       const vendorsList = data.data.vendors.map((v: any) => 
         `${v.name}: £${v.balance?.toFixed(2) || 0}`
       ).join('\n')
-      return `💰 Vendors:\n\n${vendorsList}`
+      return `💰 Counterparties:\n\n${vendorsList}`
     }
 
     return 'Query executed.'
@@ -503,7 +749,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ fullPage = false }) => {
       {/* Header */}
       <div className="bg-blue-600 text-white px-6 py-4 rounded-t-lg flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold">StockBuddy Assistant</h2>
+          <h2 className="text-xl font-semibold">Buddy - Your AI Assistant</h2>
           <p className="text-sm text-blue-100">Natural language transaction helper</p>
         </div>
         <div className="flex items-center gap-2">
@@ -552,7 +798,15 @@ export const Chatbot: React.FC<ChatbotProps> = ({ fullPage = false }) => {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-6 space-y-4">
-        {messages.map(msg => (
+        {messages.map(msg => {
+          console.log('Message:', msg.id, 'has actionButtons:', msg.actionButtons)
+          
+          // Skip tile separator (internal marker, not displayed)
+          if (msg.role === 'system' && msg.content === '__TILE_SEPARATOR__') {
+            return null
+          }
+          
+          return (
           <div
             key={msg.id}
             className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -575,6 +829,22 @@ export const Chatbot: React.FC<ChatbotProps> = ({ fullPage = false }) => {
               ) : (
                 <p className="whitespace-pre-wrap text-sm">{msg.content}</p>
               )}
+              {msg.actionButtons && msg.actionButtons.length > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {msg.actionButtons.map((button, index) => (
+                    <button
+                      key={index}
+                      onClick={() => {
+                        console.log('🔘 Button clicked:', button)
+                        handleActionButtonClick(button.action, button.data)
+                      }}
+                      className="inline-flex items-center gap-2 rounded-full bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-md transition hover:bg-blue-700"
+                    >
+                      {button.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               {msg.requiresConfirmation && msg.id === pendingConfirmation?.id && (
                 <div className="mt-4 space-y-2">
                   {editMode && editedPayload ? (
@@ -706,7 +976,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ fullPage = false }) => {
               )}
             </div>
           </div>
-        ))}
+        )})}
         <div ref={messagesEndRef} />
       </div>
 
@@ -714,10 +984,46 @@ export const Chatbot: React.FC<ChatbotProps> = ({ fullPage = false }) => {
       <div className="border-t border-gray-200 p-4">
         <div className="flex gap-2">
           <input
+            ref={inputRef}
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                handleSend()
+                setHistoryIndex(-1)
+                setTempInput('')
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault()
+                const history = getUserMessageHistory()
+                if (history.length === 0) return
+                
+                // Save current input when starting to navigate
+                if (historyIndex === -1) {
+                  setTempInput(input)
+                }
+                
+                const newIndex = Math.min(historyIndex + 1, history.length - 1)
+                setHistoryIndex(newIndex)
+                setInput(history[newIndex])
+              } else if (e.key === 'ArrowDown') {
+                e.preventDefault()
+                const history = getUserMessageHistory()
+                
+                if (historyIndex === -1) return
+                
+                const newIndex = historyIndex - 1
+                if (newIndex === -1) {
+                  // Restore the original input
+                  setInput(tempInput)
+                  setHistoryIndex(-1)
+                  setTempInput('')
+                } else {
+                  setHistoryIndex(newIndex)
+                  setInput(history[newIndex])
+                }
+              }
+            }}
             placeholder="Type your message..."
             disabled={isProcessing}
             className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
